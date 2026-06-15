@@ -44,27 +44,30 @@ cleanup() {
 # Trap the EXIT signal to guarantee the cleanup function runs regardless of exit state
 trap cleanup EXIT
 
-# Instantiate the hardened namespace wrapper
+# Run the hardened sandbox wrapper using explicit bash execution strings.
+# This prevents string truncation or early standard input exhaustion (EOF exits).
 # --fork: Executed as a child process of unshare rather than replacing current shell
 # --pid: Restricts visibility of the host's process tree (sandbox becomes PID 1)
-# --uts: Segregates hostnames/domain identifiers to prevent recon leaks to the host
+# --uts: Segregates hostnames/domain identifiers to prevent identity leaks
 # --ipc: Isolates Inter-Process Communication (Shared Memory/Message Queues)
 # --net: Disables external/host network interfaces (Total Air-gap isolation)
 # --mount: Decouples file system mounts from modifying the underlying host storage
-unshare --fork --pid --uts --ipc --net --mount /bin/bash -s <<EOF
+unshare --fork --pid --uts --ipc --net --mount /bin/bash -c "
     # 1. Ephemerally change system identity within the volatile UTS namespace memory.
     # This acts as a complete fix against host configuration leaks.
     hostname sandbox-jail
 
     # 2. Transition execution into the chroot boundary with inherited namespaces intact.
-    chroot $JAIL_DIR /bin/bash -c "
+    # We use a double-escaped string execution to guarantee standard input remains open.
+    chroot $JAIL_DIR /bin/bash -c '
         # 3. Mount an isolated pseudo-filesystem instance specific to this PID namespace
         mount -t proc proc /proc 2>/dev/null
         
-        # 4. Spawn an interactive interactive shell session for security testing
-        /bin/bash
+        # 4. Spawn an absolute interactive shell session for user testing
+        # Using --login forces bash to retain keyboard standard input buffers
+        /bin/bash --login
         
         # 5. Gracefully tear down internal infrastructure mounts before exiting the jail
         umount -l /proc 2>/dev/null
-    "
-EOF
+    '
+"
