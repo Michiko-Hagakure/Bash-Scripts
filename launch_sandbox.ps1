@@ -1,30 +1,45 @@
-# Make sure we are running as Administrator
+# ==============================================================================
+# Script Name:    launch_sandbox.ps1
+# Description:    A hardened Windows Container sandbox environment utilizing 
+#                 Docker on Windows Server Core 2022, enforcing network air-gaps 
+#                 and kernel-level Hyper-V compute isolation.
+# Author:         Michiko
+# ==============================================================================
+
+# Ensure the script is executed with elevated administrative privileges 
+# (Equivalent to checking for root UID in Linux environments)
 $isAdmin = ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
 if (-not $isAdmin) {
-    Write-Error "Please run this script as Administrator! Right-click PowerShell and 'Run as Administrator'."
+    Write-Error "Administrative privileges required! Please relaunch PowerShell using 'Run as Administrator'."
     Exit
 }
 
-# Define Sandbox Container Name
+# Define runtime identity and image constraints for the isolated boundary
 $CONTAINER_NAME = "Michiko_Secure_Sandbox"
-# Using Server Core image
+
+# Utilizing Windows Server Core 2022 as the lightweight target baseline image
 $IMAGE_NAME = "mcr.microsoft.com/windows/servercore:ltsc2022"
 
 Write-Host "==================================================" -ForegroundColor Cyan
 Write-Host " Starting Secure Windows Sandbox & Isolation Env by Michiko" -ForegroundColor Cyan
 Write-Host "==================================================" -ForegroundColor Cyan
-Write-Host "[+] Network: ISOLATED (none)" -ForegroundColor Yellow
-Write-Host "[+] Processes: KERNEL ISOLATED (Hyper-V Isolation Mode)" -ForegroundColor Yellow
-Write-Host "[+] Filesystem: LOCKED to Container Instance" -ForegroundColor Yellow
+Write-Host "[+] Network: ISOLATED (Air-Gapped)" -ForegroundColor Yellow
+Write-Host "[+] Processes: KERNEL ISOLATED (Hyper-V Utility VM)" -ForegroundColor Yellow
+Write-Host "[+] Filesystem: LOCKED (Volatile Container Layers)" -ForegroundColor Yellow
 Write-Host "--------------------------------------------------"
 Write-Host "Type 'exit' if finished testing."
 Write-Host ""
 
-# Run the Hardened Sandbox using Hyper-V Isolation
-# --network none = Strips all network interfaces (Total air-gap)
-# --isolation hyperv = Guarantees a dedicated kernel instance for the sandbox
+# Instantiate the hardened Windows Sandbox environment
+# --rm: Automatically purge container filesystem layers on termination (ephemeral lifecycle)
+# -it: Allocate a pseudo-TTY terminal and keep standard input open for interactive execution
+# --name: Enforce a unique runtime identifier to prevent collision profiles
+# --network none: Strips all virtual network adapters, guaranteeing absolute network egress isolation
+# --isolation=hyperv: Spawns the container inside an optimized utility VM with a dedicated Windows Kernel, 
+#                     mitigating container-to-host kernel exploit escape vectors.
 docker run --rm -it --name $CONTAINER_NAME --network none --isolation=hyperv $IMAGE_NAME cmd.exe
 
+# Lifecycle termination hook
 Write-Host ""
 Write-Host "==================================================" -ForegroundColor Green
 Write-Host " Sandbox closed safely. All processes terminated. " -ForegroundColor Green
